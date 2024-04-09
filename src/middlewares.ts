@@ -1,28 +1,43 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import {NextFunction, Request, Response} from 'express';
-import ErrorResponse from './interfaces/ErrorResponse';
-import CustomError from './classes/CustomError';
 import jwt from 'jsonwebtoken';
-import {OutputUser} from './interfaces/User';
-import userModel from './api/models/userModel';
+import {NextFunction, Request, Response} from 'express';
 
-const notFound = (req: Request, res: Response, next: NextFunction) => {
+import CustomError from './classes/CustomError';
+import {ErrorResponse} from './types/MessageTypes';
+import {validationResult} from 'express-validator';
+import {UserWithoutPassword} from './types/DBTypes';
+
+const notFound = (req: Request, _res: Response, next: NextFunction) => {
   const error = new CustomError(`🔍 - Not Found - ${req.originalUrl}`, 404);
   next(error);
 };
 
 const errorHandler = (
   err: CustomError,
-  req: Request,
+  _req: Request,
   res: Response<ErrorResponse>,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   next: NextFunction
 ) => {
-  console.error('errorHandler', err);
-  res.status(err.status || 500);
-  res.json({
+  // console.log(err);
+  const statusCode = err.status !== 200 ? err.status || 500 : 500;
+  res.status(statusCode).json({
     message: err.message,
     stack: process.env.NODE_ENV === 'production' ? '🥞' : err.stack,
   });
+};
+
+const validationErrors = (req: Request, res: Response, next: NextFunction) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    const messages: string = errors
+      .array()
+      .map((error) => `${error.msg}: ${error.param}`)
+      .join(', ');
+    console.log('validation errors:', messages);
+    next(new CustomError(messages, 400));
+    return;
+  }
+  next();
 };
 
 const authenticate = async (
@@ -31,41 +46,36 @@ const authenticate = async (
   next: NextFunction
 ) => {
   try {
-    console.log('authenticate');
-    // extract bearer token from header
-    const bearerHeader = req.headers['authorization'];
-    if (!bearerHeader || typeof bearerHeader === 'undefined') {
-      next(new CustomError('token not valid', 403));
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      next(new CustomError('No auth header provided', 401));
       return;
     }
+    // we are using a bearer token
+    const token = authHeader.split(' ')[1];
 
-    // extract token from bearer token
-    const bearer = bearerHeader.split(' ');
-    const token = bearer[1];
     if (!token) {
-      next(new CustomError('token not valid', 403));
+      next(new CustomError('No token provided', 401));
       return;
     }
 
-    console.log('token', token);
-    // extract user from token
-    const user = jwt.verify(
-      token,
-      process.env.JWT_SECRET as string
-    ) as OutputUser;
-    // check that user is in database
-    console.log('authenticate', user);
-    const result = await userModel.findById(user.id);
-    if (result) {
-      console.log(user, result);
-      res.locals.user = user;
-      next();
-    } else {
-      next(new CustomError('token not valid', 403));
+    if (!process.env.JWT_SECRET) {
+      next(new CustomError('JWT secret not set', 500));
+      return;
     }
+
+    const tokenContent = jwt.verify(
+      token,
+      process.env.JWT_SECRET
+    ) as UserWithoutPassword;
+    // optionally check if the user is still in the database
+
+    res.locals.user = tokenContent;
+
+    next();
   } catch (error) {
-    next(new CustomError((error as Error).message, 400));
+    next(new CustomError('Not authorized', 401));
   }
 };
 
-export {notFound, errorHandler, authenticate};
+export {notFound, errorHandler, validationErrors, authenticate};
