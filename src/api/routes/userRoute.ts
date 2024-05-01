@@ -1,6 +1,6 @@
 import express from 'express';
 import {
-  //check,
+  // check,
   // checkToken,
   userDelete,
   userGet,
@@ -8,14 +8,21 @@ import {
   userPost,
   userPut,
 } from '../controllers/userController';
-import {authenticate} from '../../middlewares';
+import {authenticate, validationErrors} from '../../middlewares';
+import {body} from 'express-validator';
 
 const router = express.Router();
 
 router
   .route('/')
   .get(userListGet)
-  .post(userPost)
+  .post(
+    body('email').isEmail().notEmpty(),
+    body('user_name').notEmpty().escape(),
+    body('password').notEmpty().escape(),
+    validationErrors,
+    userPost
+  )
   .put(authenticate, userPut)
   .delete(authenticate, userDelete);
 

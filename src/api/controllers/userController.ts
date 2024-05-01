@@ -7,7 +7,7 @@
 // TODO: add function to delete a user
 // TODO: add function to check if a token is valid
 import {Request, Response, NextFunction} from 'express';
-import {User} from '../../types/DBTypes';
+import {User, UserWithoutPasswordRole} from '../../types/DBTypes';
 import {MessageResponse} from '../../types/MessageTypes';
 import userModel from '../models/userModel';
 import CustomError from '../../classes/CustomError';
@@ -46,7 +46,7 @@ const userGet = async (
 
 const userPost = async (
   req: Request<{}, {}, Omit<User, 'user_id'>>,
-  res: Response<MessageResponse & {data: User}>,
+  res: Response<MessageResponse & {data: UserWithoutPasswordRole}>,
   next: NextFunction
 ) => {
   try {
@@ -55,7 +55,11 @@ const userPost = async (
     const user = await userModel.create(req.body);
     const response = {
       message: 'User added',
-      data: user,
+      data: {
+        id: user._id,
+        email: user.email,
+        user_name: user.user_name,
+      },
     };
     res.json(response);
   } catch (error) {
